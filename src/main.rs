@@ -1,44 +1,62 @@
-use rust_webserver::{http::HttpRequest, ThreadPool};
+use rust_webserver::{HttpRequest, HttpRequestHandler, HttpResponse, Route, Router, ThreadPool};
 use std::{
-    fs,
-    io::{prelude::*, BufReader},
+    io::prelude::*,
     net::{TcpListener, TcpStream},
+    sync::Arc,
     thread,
     time::Duration,
 };
 
+static THREAD_COUNT: usize = 5;
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let pool = ThreadPool::new(4);
+    let pool = ThreadPool::new(THREAD_COUNT);
+    let router = Arc::new(Router::new(create_routes()));
 
-    for stream in listener.incoming().take(2) {
+    for stream in listener.incoming().take(THREAD_COUNT) {
         let stream = stream.unwrap();
+        let rt = Arc::clone(&router);
 
-        pool.execute(|| {
-            handle_connection(stream);
+        pool.execute(move || {
+            handle_connection(stream, rt);
         });
     }
 
     println!("Shutting down.");
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let buf_reader = BufReader::new(&mut stream);
-    let request_line = buf_reader.lines().next().unwrap().unwrap();
+fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
+    let mut buffer = [0; 1024];
+    stream.read(&mut buffer).unwrap();
 
-    let (status_line, filename) = match &request_line[..] {
-        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
-        "GET /sleep HTTP/1.1" => {
+    let request = HttpRequest::from(String::from_utf8_lossy(&buffer[..]).to_string());
+
+    if let Some(route) = router.get_handler(&request.path) {
+        let response = route.handle(request);
+
+        stream.write_all(&response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+
+        return;
+    }
+
+    let response = HttpRequestHandler::new(request).handle();
+
+    stream.write_all(&response.as_bytes()).unwrap();
+    stream.flush().unwrap();
+}
+
+fn create_routes() -> Vec<Route> {
+    let mut routes = Vec::new();
+
+    routes.push(Route::new(
+        "/sleep".to_string(),
+        Box::new(|_| {
             thread::sleep(Duration::from_secs(5));
-            ("HTTP/1.1 200 OK", "hello.html")
-        }
-        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
-    };
+            HttpResponse::from("Hello, world!".to_string())
+        }),
+    ));
 
-    let contents = fs::read_to_string(filename).unwrap();
-    let length = contents.len();
-
-    let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-
-    stream.write_all(response.as_bytes()).unwrap();
+    routes
 }

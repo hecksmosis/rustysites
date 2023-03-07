@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-static THREAD_COUNT: usize = 5;
+static THREAD_COUNT: usize = 10;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();

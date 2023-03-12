@@ -1,3 +1,5 @@
+use crate::Template;
+
 use super::HttpVersion;
 use std::{collections::HashMap, env, fs};
 
@@ -87,6 +89,22 @@ impl From<String> for HttpResponse {
             response.body = Some(body.replace("{{body}}", &text));
         }
 
+        response
+    }
+}
+
+impl From<Template> for HttpResponse {
+    fn from(mut template: Template) -> Self {
+        let mut response = HttpResponse::default();
+        response.version = HttpVersion::HTTP20;
+        response.status_code = "200".to_string();
+        response.status_text = "OK".to_string();
+
+        if let Some(body) = &template.rendered {
+            response.body = Some(body.to_string());
+        } else {
+            template.render(HashMap::new());
+        }
         response
     }
 }

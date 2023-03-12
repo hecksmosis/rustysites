@@ -1,5 +1,8 @@
-use rust_webserver::{HttpRequest, HttpRequestHandler, HttpResponse, Route, Router, ThreadPool};
+use rust_webserver::{
+    HttpRequest, HttpRequestHandler, HttpResponse, Route, Router, Template, ThreadPool,
+};
 use std::{
+    collections::HashMap,
     io::prelude::*,
     net::{TcpListener, TcpStream},
     sync::Arc,
@@ -23,7 +26,7 @@ fn main() {
         });
     }
 
-    println!("Shutting down.");
+    println!("Shutting down server.");
 }
 
 fn handle_connection(mut stream: TcpStream, router: Arc<Router>) {
@@ -55,6 +58,16 @@ fn create_routes() -> Vec<Route> {
         Box::new(|_| {
             thread::sleep(Duration::from_secs(5));
             HttpResponse::from("Hello, world!".to_string())
+        }),
+    ));
+
+    routes.push(Route::new(
+        "/hello".to_string(),
+        Box::new(|_| {
+            let mut template =
+                Template::build("hello".to_string(), "text.html".to_string()).unwrap();
+            template.render(HashMap::from([("name".to_string(), "World".to_string())]));
+            HttpResponse::from(template)
         }),
     ));
 
